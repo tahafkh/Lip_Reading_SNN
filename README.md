@@ -1,2 +1,1 @@
-# Lip_Reading_SNN
-My implementation of SNNs for lip-reading using event-videos
+# Delayed SNN for Lip Reading Task
