@@ -1,6 +1,7 @@
 from SNN_models import *
 from utils import *
 import numpy as np
+import json
 import torch
 from spikingjelly.activation_based import functional, surrogate, neuron
 import tonic
@@ -33,9 +34,9 @@ parser.add_argument('--model_name', type=str, default="spiking_mstp_low")
 args = parser.parse_args()
 
 LR = 1e-3 if not args.lr else args.lr
-BATCH_SIZE = 32 if not args.batch_size else args.batch_size
-MODEL_CHECKPOINT_PATH = "small_snn2.pt"
-BEST_MODEL_CHECKPOINT_PATH = "best.pt"
+BATCH_SIZE = 4 if not args.batch_size else args.batch_size
+MODEL_CHECKPOINT_PATH = os.path.expanduser('~/dvs-runs/full_3_acc_last_model.pth')
+BEST_MODEL_CHECKPOINT_PATH = os.path.expanduser('~/dvs-runs/full_3_acc_best_model.pth')
 NUM_CLASSES = 100 if not args.n_class else args.n_class
 EPOCHS  = 100 if not args.max_epoch else args.max_epoch
 RESUME_TRAINING = args.resume_training # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
@@ -108,51 +109,62 @@ if RESUME_TRAINING:
 model_memory_need = model_memory_usage(model)
 print("Model memory usage: ", model_memory_need, "bytes", "->", model_memory_need*0.000001, "MB")
 
-training_losses = []
-mean_losses = []
+train_losses = []
 test_losses = []
-accuracies = []
+train_accuracies = []
+test_accuracies = []
 best_epoch = {"accuracy":0, "val_loss":9999, "train_loss":9999, "epoch":0}
 
 torch.autograd.set_detect_anomaly(True)
 
 # Training/testing loop
 for epoch in trange(start_epoch, EPOCHS):
-	train_loss, train_accuracy = train(model, DEVICE, train_loader, optimizer, num_labels=NUM_CLASSES, scheduler=scheduler)
-	test_loss, accuracy = test(model, DEVICE, test_loader, num_labels=NUM_CLASSES)
-
-	training_losses.append(train_loss)
-	mean_losses.append(train_loss)
-	test_losses.append(test_loss)
-	accuracies.append(accuracy)
-	checkpoint={
-		'epoch':epoch,
-		'model':model.state_dict(),
-		'optimizer':optimizer.state_dict(),
-		'scheduler': None if scheduler is None else scheduler.state_dict()
-	}
-	torch.save(checkpoint, MODEL_CHECKPOINT_PATH)
+    train_loss, train_accuracy = train(model, DEVICE, train_loader, optimizer, num_labels=NUM_CLASSES, scheduler=scheduler)
+    test_loss, test_accuracy = test(model, DEVICE, test_loader, num_labels=NUM_CLASSES)
+    
+    train_losses.append(train_loss)
+    test_losses.append(test_loss)
+    train_accuracies.append(train_accuracy)
+    test_accuracies.append(test_accuracy)
+	# checkpoint={
+	# 	'epoch':epoch,
+	# 	'model':model.state_dict(),
+	# 	'optimizer':optimizer.state_dict(),
+	# 	'scheduler': None if scheduler is None else scheduler.state_dict()
+	# }
+    torch.save(model.state_dict(), MODEL_CHECKPOINT_PATH)
 
 	# We save the best model in BEST_MODEL_CHECKPOINT_PATH
-	if accuracy>best_epoch["accuracy"] or (accuracy==best_epoch["accuracy"] and test_loss<best_epoch["val_loss"]):
-		best_epoch["accuracy"]=accuracy
-		best_epoch["val_loss"]=test_loss
-		best_epoch["train_loss"]=train_loss
-		best_epoch["epoch"]=epoch
-		checkpoint={
-		'epoch':epoch,
-		'model':model.state_dict(),
-		'optimizer':optimizer.state_dict(),
-		'scheduler': None if scheduler is None else scheduler.state_dict()
-	}
-	torch.save(checkpoint, BEST_MODEL_CHECKPOINT_PATH)
+    if test_accuracy>best_epoch["accuracy"] or (test_accuracy==best_epoch["accuracy"] and test_loss<best_epoch["val_loss"]):
+        best_epoch["accuracy"]=test_accuracy
+        best_epoch["val_loss"]=test_loss
+        best_epoch["train_loss"]=train_loss
+        best_epoch["epoch"]=epoch
+    # 	checkpoint={
+    # 	'epoch':epoch,
+    # 	'model':model.state_dict(),
+    # 	'optimizer':optimizer.state_dict(),
+    # 	'scheduler': None if scheduler is None else scheduler.state_dict()
+    # }
+        torch.save(model.state_dict(), BEST_MODEL_CHECKPOINT_PATH)
+    
+    print("Train loss at epoch", epoch, ":", train_loss)
+    print("Train accuracy at epoch", epoch, ":", train_accuracy, "%")
+    print("Test loss at epoch", epoch, ":", test_loss)
+    print("Test accuracy at epoch", epoch, ":", test_accuracy, "%")
+    print("BEST EPOCH SO FAR:",best_epoch)
 
-	print("Train loss at epoch", epoch, ":", train_loss)
-	print("Train accuracy at epoch", epoch, ":", train_accuracy, "%")
-	print("Test loss at epoch", epoch, ":", test_loss)
-	print("Test accuracy at epoch", epoch, ":", accuracy, "%")
-	print("BEST EPOCH SO FAR:",best_epoch)
+    results = {
+        'train_losses': train_losses,
+        'test_losses': test_losses,
+        'train_accuracies': train_accuracies,
+        'test_accuracies': test_accuracies,
+        'best_epoch': best_epoch,
+    }
+
+    filename = os.path.expanduser(f'~/dvs-runs/full_3_acc.json')
+    with open(filename, 'w') as file:
+        json.dump(results, file)
 
 print("Training done !")
 print("BEST EPOCH:",best_epoch)
-print("Best model saved in", BEST_MODEL_CHECKPOINT_PATH)

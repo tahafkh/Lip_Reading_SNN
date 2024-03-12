@@ -7,7 +7,6 @@ from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.animation as animation
-from EVisu import EventCount as EventReduction 
 import tonic
 from spikingjelly.activation_based import functional
 from torchmetrics.classification import MulticlassConfusionMatrix
@@ -279,39 +278,34 @@ def center_crop(events):
 # Train for one epoch
 def train(model, device, train_loader, optimizer, num_labels=70, scheduler=None):
 	model.train()
+	use_accumulation = True
+	accumulation_steps = 8
 	train_loss =0
 	correct=0
-	targets = torch.tensor([]).to(device)
-	preds = None
 	cpt=0
-	for (data, target) in tqdm(train_loader, leave=False):
-		cpt+=1
-		optimizer.zero_grad()
-
+	optimizer.zero_grad()
+	for i, (data, target) in enumerate(tqdm(train_loader, leave=False)):
+		cpt += 1
 		data, target = data.transpose(0, 1).float().to(device), target.to(device)
 
-		clone = target.clone().detach()
-		targets = torch.hstack((targets, clone))
-		
 		output = model(data)
 		output = output.transpose(0,1).mean(1)
-
-		if preds is None:
-			preds = output
-		else:
-			preds = torch.vstack((preds, output))
-
 		label_onehot = torch.nn.functional.one_hot(target, num_labels).float()
 		loss = torch.nn.functional.cross_entropy(output, label_onehot)
 
 		pred = np.array(output.cpu().argmax(dim=1, keepdim=True)).flatten()  
 		for p in range(len(pred)):
-			correct+=int(pred[p]==target[p].item())
-
-		loss.backward()
-		optimizer.step()
+			correct += int(pred[p]==target[p].item())
 
 		train_loss += loss.item()
+		if use_accumulation:
+			loss /= accumulation_steps
+		loss.backward()
+		
+		if not use_accumulation or ((i+1) % accumulation_steps == 0):
+			optimizer.step()
+			optimizer.zero_grad()
+			
 		functional.reset_net(model)
 
 	if scheduler is not None:
