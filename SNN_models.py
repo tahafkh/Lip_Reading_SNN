@@ -23,7 +23,7 @@ class Dcls3_1_SJ(Dcls3_1d):
         groups=1,
         bias=True,
         padding_mode='zeros',
-        version='gauss',
+        version='v1',
     ):
         super().__init__(
             in_channels,
@@ -43,7 +43,7 @@ class Dcls3_1_SJ(Dcls3_1d):
         # if not self.learn_delay:
         #     torch.nn.init.constant_(self.P, dilated_kernel_size // 2)
         #     self.P.requires_grad = False
-        if self.version == 'gauss':
+        if self.version == 'v1':
             self.SIG.requires_grad = False
             
 
@@ -154,7 +154,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 def new_conv3x3(in_planes, out_planes, stride=1):
     return Dcls3_1_SJ(in_channels=in_planes, out_channels=out_planes, kernel_count=1,
                                stride=stride, dense_kernel_size=3, dilated_kernel_size=3,
-                               bias=False, groups=1, spatial_padding=(3//2, 3//2), version='gauss'
+                               bias=False, groups=1, spatial_padding=(3//2, 3//2), version='v1'
                               )
 
 def conv1x1(in_planes, out_planes, stride=1):
@@ -165,7 +165,7 @@ def conv1x1(in_planes, out_planes, stride=1):
 def new_conv1x1(in_planes, out_planes, stride=1):
     return Dcls3_1_SJ(in_channels=in_planes, out_channels=out_planes, kernel_count=1,
                                stride=stride, dense_kernel_size=1, dilated_kernel_size=3,
-                               bias=False, groups=1, spatial_padding=(1//2, 1//2), version='gauss'
+                               bias=False, groups=1, spatial_padding=(1//2, 1//2), version='v1'
                               )
 
 
