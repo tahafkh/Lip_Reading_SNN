@@ -174,6 +174,7 @@ class BasicBlock(torch.nn.Module):
 
 	def __init__(self, inplanes, planes, delayed=False, stride=1, downsample=None, se=False, spiking_neuron=None,*args, **kwargs):
 		super(BasicBlock, self).__init__()
+		self.delayed = delayed
 		final_conv3x3 = new_conv3x3 if delayed else conv3x3
 		final_conv1x1 = new_conv1x1 if delayed else conv1x1
 		self.conv1 = final_conv3x3(inplanes, planes, stride)
@@ -222,6 +223,13 @@ class BasicBlock(torch.nn.Module):
 
 		return out
 
+	def clamp_parameters(self):
+		if self.delayed:
+			self.conv1.clamp_parameters()
+			self.conv2.clamp_parameters()
+			if self.se:
+				self.conv3.clamp_parameters()
+				self.conv4.clamp_parameters()
 
 class ResNet18(torch.nn.Module):
 	def __init__(self, block, layers, se=False, spiking_neuron=None, *args, **kwargs):
@@ -240,6 +248,7 @@ class ResNet18(torch.nn.Module):
 		self.relu = torch.nn.ReLU(inplace=True)
 		self.maxpool = layer.MaxPool2d(kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
 		self.se = se
+		self.layers = []
 		
 		self.layer1 = self._make_layer(block, self.base_channel // (1 if self.low_rate else self.alpha), layers[0], delayed=True, spiking_neuron=spiking_neuron, *args,**kwargs)
 		self.layer2 = self._make_layer(block, 2 * self.base_channel // (1 if self.low_rate else self.alpha), layers[1], delayed=True, stride=2, spiking_neuron=spiking_neuron, *args,**kwargs)
@@ -272,11 +281,17 @@ class ResNet18(torch.nn.Module):
 
 		#self.inplanes += self.low_rate * block.expansion * planes // self.alpha #* self.t2s_mul
 		self.inplanes = planes
+		self.layers.append(layers)
 
 		return torch.nn.Sequential(*layers)
 
 	def forward(self, x):
 		raise NotImplementedError
+	
+	def clamp_parameters(self):
+		for layer in self.layers:
+			for block in layer:
+				block.clamp_parameters()
 
 	def init_params(self):
 		for m in self.modules():
