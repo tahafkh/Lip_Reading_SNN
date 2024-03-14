@@ -301,12 +301,13 @@ def train(model, device, train_loader, optimizer, num_labels=70, scheduler=None)
 		if use_accumulation:
 			loss /= accumulation_steps
 		loss.backward()
-		
+
 		if not use_accumulation or ((i+1) % accumulation_steps == 0):
 			optimizer.step()
 			optimizer.zero_grad()
 			
 		functional.reset_net(model)
+		model.clamp_parameters()
 
 	if scheduler is not None:
 		scheduler.step()
