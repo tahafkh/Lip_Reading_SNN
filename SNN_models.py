@@ -43,7 +43,7 @@ class Dcls3_1_SJ(Dcls3_1d):
         # if not self.learn_delay:
         #     torch.nn.init.constant_(self.P, dilated_kernel_size // 2)
         #     self.P.requires_grad = False
-        if self.version == 'v1':
+        if self.version == 'gauss':
             self.SIG.requires_grad = False
             
 
