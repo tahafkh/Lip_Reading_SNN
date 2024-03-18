@@ -1,7 +1,5 @@
 from SNN_models import *
 from utils import *
-import os
-import datetime
 import numpy as np
 import json
 import torch
@@ -37,17 +35,11 @@ args = parser.parse_args()
 
 LR = 1e-3 if not args.lr else args.lr
 BATCH_SIZE = 4 if not args.batch_size else args.batch_size
-
-TIME = datetime.datetime.now().isoformat()
-BASE_PATH = os.path.expanduser(f'~/dvs-runs/{TIME}')
-os.makedirs(BASE_PATH, exist_ok=True)
-
-MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_last_model.pth')
-BEST_MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_best_model.pth')
-
+MODEL_CHECKPOINT_PATH = os.path.expanduser('~/dvs-runs/full_3_acc_last_model.pth')
+BEST_MODEL_CHECKPOINT_PATH = os.path.expanduser('~/dvs-runs/full_3_acc_best_model.pth')
 NUM_CLASSES = 100 if not args.n_class else args.n_class
 EPOCHS  = 100 if not args.max_epoch else args.max_epoch
-# RESUME_TRAINING = args.resume_training # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
+RESUME_TRAINING = args.resume_training # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
 DATASET_PATH="/home/hugo/Work/TER/DVS-Lip" if not args.dataset_path else args.dataset_path
 T = args.T
 #DATASET_PATH="/home/hugo/Work/TER/i3s_dataset3"
@@ -96,19 +88,7 @@ else:
 
 functional.set_step_mode(model, 'm')
 
-position_params = []
-other_params = []
-for name, param in model.named_parameters():
-    if name.endswith('.P') and param.requires_grad:
-        position_params.append(param)
-    else:
-        other_params.append(param)
-
-param_groups = [{'params': position_params,'lr': LR*10},
-                {'params': other_params,'lr': LR},
-               ]
-
-optimizer = torch.optim.Adam(param_groups, lr=LR, weight_decay=10e-7)
+optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=10e-7)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, EPOCHS)
 
 # Set scheduler to None if you don't want to use it
@@ -116,14 +96,14 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, EPOCHS)
 start_epoch = 0
 
 # Loading MODEL_CHECKPOINT_PATH if resume training is true
-# if RESUME_TRAINING:
-# 	checkpoint= torch.load(MODEL_CHECKPOINT_PATH)
-# 	model.load_state_dict(checkpoint['model'])
-# 	optimizer.load_state_dict(checkpoint['optimizer'])
-# 	start_epoch = checkpoint['epoch']
-# 	print("Resuming training from epoch", start_epoch)
-# 	if scheduler is not None:
-# 		scheduler.load_state_dict(checkpoint['scheduler'])
+if RESUME_TRAINING:
+	checkpoint= torch.load(MODEL_CHECKPOINT_PATH)
+	model.load_state_dict(checkpoint['model'])
+	optimizer.load_state_dict(checkpoint['optimizer'])
+	start_epoch = checkpoint['epoch']
+	print("Resuming training from epoch", start_epoch)
+	if scheduler is not None:
+		scheduler.load_state_dict(checkpoint['scheduler'])
 
 # Print the memory taken by the model
 model_memory_need = model_memory_usage(model)
@@ -182,7 +162,7 @@ for epoch in trange(start_epoch, EPOCHS):
         'best_epoch': best_epoch,
     }
 
-    filename = os.path.join(BASE_PATH, 'full_3_acc.json')
+    filename = os.path.expanduser(f'~/dvs-runs/full_3_acc.json')
     with open(filename, 'w') as file:
         json.dump(results, file)
 
