@@ -88,7 +88,19 @@ else:
 
 functional.set_step_mode(model, 'm')
 
-optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=10e-7)
+position_params = []
+other_params = []
+for name, param in model.named_parameters():
+    if name.endswith('.P') and param.requires_grad:
+        position_params.append(param)
+    else:
+        other_params.append(param)
+
+param_groups = [{'params': position_params,'lr': LR*10},
+                {'params': other_params,'lr': LR},
+               ]
+
+optimizer = torch.optim.Adam(param_groups, lr=LR, weight_decay=10e-7)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, EPOCHS)
 
 # Set scheduler to None if you don't want to use it
