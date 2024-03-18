@@ -39,7 +39,6 @@ class Dcls3_1_SJ(Dcls3_1d):
             version,
         )
         self.learn_delay = learn_delay
-        self.dilated_kernel_size = dilated_kernel_size
         # if not self.learn_delay:
         #     torch.nn.init.constant_(self.P, dilated_kernel_size // 2)
         #     self.P.requires_grad = False
@@ -49,7 +48,7 @@ class Dcls3_1_SJ(Dcls3_1d):
 
     def forward(self, x):
         x = x.permute(1, 2, 3, 4, 0) # [T, N, C, H, W] -> [N, C, H, W, T]
-        x = F.pad(x, (self.dilated_kernel_size-1, 0), mode='constant', value=0)
+        x = F.pad(x, (self.dilated_kernel_size[0]-1, 0), mode='constant', value=0)
         x = super().forward(x)
         x = x.permute(4, 0, 1, 2, 3) # [N, C, H, W, T] -> [T, N, C, H, W]
         return x
@@ -153,7 +152,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 def new_conv3x3(in_planes, out_planes, stride=1):
     return Dcls3_1_SJ(in_channels=in_planes, out_channels=out_planes, kernel_count=1,
-                               stride=stride, dense_kernel_size=3, dilated_kernel_size=3,
+                               stride=stride, dense_kernel_size=3, dilated_kernel_size=(3, ),
                                bias=False, groups=1, spatial_padding=(3//2, 3//2), version='v1'
                               )
 
@@ -164,7 +163,7 @@ def conv1x1(in_planes, out_planes, stride=1):
 
 def new_conv1x1(in_planes, out_planes, stride=1):
     return Dcls3_1_SJ(in_channels=in_planes, out_channels=out_planes, kernel_count=1,
-                               stride=stride, dense_kernel_size=1, dilated_kernel_size=3,
+                               stride=stride, dense_kernel_size=1, dilated_kernel_size=(3, ),
                                bias=False, groups=1, spatial_padding=(1//2, 1//2), version='v1'
                               )
 
