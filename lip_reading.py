@@ -38,16 +38,18 @@ args = parser.parse_args()
 LR = 1e-3 if not args.lr else args.lr
 BATCH_SIZE = 4 if not args.batch_size else args.batch_size
 
-TIME = datetime.datetime.now().isoformat()
+# TIME = datetime.datetime.now().isoformat()
+TIME = '2024-03-19T01:49:45.647774'
 BASE_PATH = os.path.expanduser(f'~/dvs-runs/{TIME}')
-os.makedirs(BASE_PATH, exist_ok=True)
+# os.makedirs(BASE_PATH, exist_ok=True)
 
 MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_last_model.pth')
 BEST_MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_best_model.pth')
+RESULTS_PATH = os.path.join(BASE_PATH, 'full_3_acc.json')
 
 NUM_CLASSES = 100 if not args.n_class else args.n_class
 EPOCHS  = 100 if not args.max_epoch else args.max_epoch
-# RESUME_TRAINING = args.resume_training # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
+RESUME_TRAINING = True # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
 DATASET_PATH="/home/hugo/Work/TER/DVS-Lip" if not args.dataset_path else args.dataset_path
 T = args.T
 #DATASET_PATH="/home/hugo/Work/TER/i3s_dataset3"
@@ -115,16 +117,6 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, EPOCHS)
 #scheduler = None
 start_epoch = 0
 
-# Loading MODEL_CHECKPOINT_PATH if resume training is true
-# if RESUME_TRAINING:
-# 	checkpoint= torch.load(MODEL_CHECKPOINT_PATH)
-# 	model.load_state_dict(checkpoint['model'])
-# 	optimizer.load_state_dict(checkpoint['optimizer'])
-# 	start_epoch = checkpoint['epoch']
-# 	print("Resuming training from epoch", start_epoch)
-# 	if scheduler is not None:
-# 		scheduler.load_state_dict(checkpoint['scheduler'])
-
 # Print the memory taken by the model
 model_memory_need = model_memory_usage(model)
 print("Model memory usage: ", model_memory_need, "bytes", "->", model_memory_need*0.000001, "MB")
@@ -137,6 +129,23 @@ best_epoch = {"accuracy":0, "val_loss":9999, "train_loss":9999, "epoch":0}
 
 torch.autograd.set_detect_anomaly(True)
 
+# Loading MODEL_CHECKPOINT_PATH if resume training is true
+if RESUME_TRAINING:
+    checkpoint= torch.load(MODEL_CHECKPOINT_PATH)
+    model.load_state_dict(checkpoint['model'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    start_epoch = checkpoint['epoch']
+    if scheduler is not None:
+    	scheduler.load_state_dict(checkpoint['scheduler'])
+    with open(RESULTS_PATH, 'r') as f:
+        results = json.load(f)
+    train_losses = results['train_losses']
+    test_losses = results['test_losses']
+    train_accuracies = results['train_accuracies']
+    test_accuracies = results['test_accuracies']
+    best_epoch = results['best_epoch']
+    print("Resuming training from epoch", start_epoch)
+
 # Training/testing loop
 for epoch in trange(start_epoch, EPOCHS):
     train_loss, train_accuracy = train(model, DEVICE, train_loader, optimizer, num_labels=NUM_CLASSES, scheduler=scheduler)
@@ -146,13 +155,13 @@ for epoch in trange(start_epoch, EPOCHS):
     test_losses.append(test_loss)
     train_accuracies.append(train_accuracy)
     test_accuracies.append(test_accuracy)
-	# checkpoint={
-	# 	'epoch':epoch,
-	# 	'model':model.state_dict(),
-	# 	'optimizer':optimizer.state_dict(),
-	# 	'scheduler': None if scheduler is None else scheduler.state_dict()
-	# }
-    torch.save(model.state_dict(), MODEL_CHECKPOINT_PATH)
+    checkpoint = {
+        'epoch':epoch,
+        'model':model.state_dict(),
+        'optimizer':optimizer.state_dict(),
+        'scheduler': None if scheduler is None else scheduler.state_dict()
+    }
+    torch.save(checkpoint, MODEL_CHECKPOINT_PATH)
 
 	# We save the best model in BEST_MODEL_CHECKPOINT_PATH
     if test_accuracy>best_epoch["accuracy"] or (test_accuracy==best_epoch["accuracy"] and test_loss<best_epoch["val_loss"]):
@@ -160,13 +169,7 @@ for epoch in trange(start_epoch, EPOCHS):
         best_epoch["val_loss"]=test_loss
         best_epoch["train_loss"]=train_loss
         best_epoch["epoch"]=epoch
-    # 	checkpoint={
-    # 	'epoch':epoch,
-    # 	'model':model.state_dict(),
-    # 	'optimizer':optimizer.state_dict(),
-    # 	'scheduler': None if scheduler is None else scheduler.state_dict()
-    # }
-        torch.save(model.state_dict(), BEST_MODEL_CHECKPOINT_PATH)
+        torch.save(checkpoint, BEST_MODEL_CHECKPOINT_PATH)
     
     print("Train loss at epoch", epoch, ":", train_loss)
     print("Train accuracy at epoch", epoch, ":", train_accuracy, "%")
@@ -182,8 +185,7 @@ for epoch in trange(start_epoch, EPOCHS):
         'best_epoch': best_epoch,
     }
 
-    filename = os.path.join(BASE_PATH, 'full_3_acc.json')
-    with open(filename, 'w') as file:
+    with open(RESULTS_PATH, 'w') as file:
         json.dump(results, file)
 
 print("Training done !")
