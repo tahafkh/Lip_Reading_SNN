@@ -38,10 +38,10 @@ args = parser.parse_args()
 LR = 1e-3 if not args.lr else args.lr
 BATCH_SIZE = 4 if not args.batch_size else args.batch_size
 
-# TIME = datetime.datetime.now().isoformat()
-TIME = '2024-03-19T01:49:45.647774'
+TIME = datetime.datetime.now().isoformat()
+# TIME = '2024-03-19T01:49:45.647774'
 BASE_PATH = os.path.expanduser(f'~/dvs-runs/{TIME}')
-# os.makedirs(BASE_PATH, exist_ok=True)
+os.makedirs(BASE_PATH, exist_ok=True)
 
 MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_last_model.pth')
 BEST_MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, 'full_3_acc_best_model.pth')
@@ -49,7 +49,7 @@ RESULTS_PATH = os.path.join(BASE_PATH, 'full_3_acc.json')
 
 NUM_CLASSES = 100 if not args.n_class else args.n_class
 EPOCHS  = 100 if not args.max_epoch else args.max_epoch
-RESUME_TRAINING = True # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
+RESUME_TRAINING = False # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
 DATASET_PATH="/home/hugo/Work/TER/DVS-Lip" if not args.dataset_path else args.dataset_path
 T = args.T
 #DATASET_PATH="/home/hugo/Work/TER/i3s_dataset3"
@@ -149,6 +149,7 @@ if RESUME_TRAINING:
 # Training/testing loop
 for epoch in trange(start_epoch, EPOCHS):
     train_loss, train_accuracy = train(model, DEVICE, train_loader, optimizer, num_labels=NUM_CLASSES, scheduler=scheduler)
+    model.decrease_sig(epoch, EPOCHS)
     test_loss, test_accuracy = test(model, DEVICE, test_loader, num_labels=NUM_CLASSES)
     
     train_losses.append(train_loss)
