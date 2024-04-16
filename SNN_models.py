@@ -47,11 +47,10 @@ class Dcls3_1_SJ(Dcls3_1d):
             torch.nn.init.constant_(self.SIG, self.sig_init)
 
     def decrease_sig(self, epoch, epochs):
-        final_epoch = (1 * epochs) // 4
-        final_sig = 0.23
-        sig = self.SIG[0, 0, 0, 0, 0, 0].detach().cpu().item()
         if self.version == "gauss":
-            if epoch < epochs and sig > final_sig:
+            final_epoch = epochs // 4
+            final_sig = 0.23
+            if epoch < epochs and (self.SIG > final_sig).all():
                 alpha = (final_sig / self.sig_init) ** (1 / final_epoch)
                 self.SIG *= alpha
 
@@ -469,6 +468,17 @@ class ResNet18(torch.nn.Module):
                     m.kernel_size[0]
                     * m.kernel_size[1]
                     * m.kernel_size[2]
+                    * m.out_channels
+                )
+                m.weight.data.normal_(0, math.sqrt(2.0 / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+            if isinstance(m, (Dcls3_1d, Dcls3_1_SJ)):
+                n = (
+                    m.dense_kernel_size[0]
+                    * m.dense_kernel_size[1]
+                    * m.dilated_kernel_size[0]
                     * m.out_channels
                 )
                 m.weight.data.normal_(0, math.sqrt(2.0 / n))
