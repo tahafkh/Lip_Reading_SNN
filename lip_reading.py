@@ -142,6 +142,7 @@ else:
 
 functional.set_step_mode(model, "m")
 
+# DCLS position_params have 10x learning rate
 position_params = []
 other_params = []
 for name, param in model.named_parameters():
@@ -155,7 +156,7 @@ param_groups = [
     {"params": other_params, "lr": args.lr},
 ]
 
-optimizer = torch.optim.Adam(param_groups, lr=args.lr, weight_decay=10e-7)
+optimizer = torch.optim.Adam(param_groups, lr=args.lr, weight_decay=1e-6)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.max_epoch)
 
 # Set scheduler to None if you don't want to use it
@@ -211,6 +212,7 @@ for epoch in range(start_epoch, args.max_epoch):
         num_labels=args.n_class,
         scheduler=scheduler,
     )
+    # DCLS sigmas follow a decreasing linear scheduler
     model.decrease_sig(epoch, args.max_epoch)
     test_loss, test_accuracy = test(model, DEVICE, test_loader, num_labels=args.n_class)
 

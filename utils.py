@@ -353,7 +353,7 @@ def train(model, device, train_loader, optimizer, num_labels=70, scheduler=None)
         scheduler.step()
 
     accuracy = 100.0 * correct / total
-    train_loss /= i
+    train_loss /= i + 1
 
     return train_loss, accuracy
 
@@ -379,7 +379,7 @@ def test(model, device, test_loader, num_labels=70):
             correct += (output.argmax(1) == target).sum().item()
 
     accuracy = 100.0 * correct / total
-    test_loss /= i
+    test_loss /= i + 1
 
     return test_loss, accuracy
 
