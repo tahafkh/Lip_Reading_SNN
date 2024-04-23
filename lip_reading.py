@@ -91,8 +91,12 @@ else:
     print("--dataset should be either dvs_lip or i3s")
     exit()
 
-train_loader = DataLoader(X_train, batch_size=args.batch_size, shuffle=True)
-test_loader = DataLoader(X_test, batch_size=args.batch_size, shuffle=False)
+train_loader = DataLoader(
+    X_train, batch_size=args.batch_size, shuffle=True, num_workers=4
+)
+test_loader = DataLoader(
+    X_test, batch_size=args.batch_size, shuffle=False, num_workers=4
+)
 
 
 if torch.cuda.is_available():
@@ -146,17 +150,17 @@ functional.set_step_mode(model, "m")
 position_params = []
 other_params = []
 for name, param in model.named_parameters():
-    if name.endswith(".P") and param.requires_grad:
+    if name.endswith(".P") or name.endswith(".SIG") and param.requires_grad:
         position_params.append(param)
     else:
         other_params.append(param)
 
 param_groups = [
-    {"params": position_params, "lr": args.lr * 10},
-    {"params": other_params, "lr": args.lr},
+    {"params": position_params, "lr": args.lr * 10, "weight_decay": 0.0},
+    {"params": other_params, "lr": args.lr, "weight_decay": 1e-6},
 ]
 
-optimizer = torch.optim.Adam(param_groups, lr=args.lr, weight_decay=1e-6)
+optimizer = torch.optim.Adam(param_groups, lr=args.lr)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.max_epoch)
 
 # Set scheduler to None if you don't want to use it
