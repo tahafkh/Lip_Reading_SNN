@@ -197,7 +197,7 @@ def new_conv3x3(in_planes, out_planes, stride=1):
         bias=False,
         groups=1,
         spatial_padding=(3 // 2, 3 // 2),
-        version="gauss",
+        version="v1",
     )
 
 
@@ -220,7 +220,7 @@ def new_conv1x1(in_planes, out_planes, stride=1):
         bias=False,
         groups=1,
         spatial_padding=(1 // 2, 1 // 2),
-        version="gauss",
+        version="v1",
     )
 
 
