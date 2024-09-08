@@ -32,6 +32,7 @@ parser.add_argument("--batch_size", type=int, required=False, default=32)
 parser.add_argument("-T", type=int, default=30)
 parser.add_argument("--max_epoch", type=int, required=False, default=100)
 parser.add_argument("--resume_training", action="store_true")
+parser.add_argument("-d", dest="is_delayed", action="store_true", default=False, help="delayed network")
 
 # dataset
 parser.add_argument("--dataset", type=str, required=False, default="dvs_lip")
@@ -120,6 +121,7 @@ if args.model_name == "spiking_mstp_low":
     model = LowRateBranch(
         n_class=args.n_class,
         spiking_neuron=plif,
+        delayed=args.is_delayed,
         detach_reset=True,
         surrogate_function=surrogate.Erf(),
         step_mode="m",
@@ -156,7 +158,7 @@ for name, param in model.named_parameters():
         other_params.append(param)
 
 param_groups = [
-    {"params": position_params, "lr": args.lr * 10, "weight_decay": 0.0},
+    {"params": position_params, "lr": args.lr * 100, "weight_decay": 0.0},
     {"params": other_params, "lr": args.lr, "weight_decay": 1e-6},
 ]
 

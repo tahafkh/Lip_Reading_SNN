@@ -21,37 +21,38 @@ class Dcls3_1_SJ(Dcls3_1d):
         dilated_kernel_size=1,
         groups=1,
         bias=True,
-        padding_mode="zeros",
-        version="v1",
+        padding_mode='zeros',
+        version='v1',
     ):
         super().__init__(
             in_channels,
             out_channels,
             kernel_count,
-            (stride, stride, 1),
+            (*stride, 1),
             (*spatial_padding, 0),
             dense_kernel_size,
             dilated_kernel_size,
             groups,
             bias,
-            padding_mode,
+            padding_mode,  
             version,
         )
         self.learn_delay = learn_delay
+        torch.nn.init.constant_(self.P, (dilated_kernel_size[0] // 2)-0.01)
         if not self.learn_delay:
-            # torch.nn.init.constant_(self.P, dilated_kernel_size // 2)
-            self.P.requires_grad = False
-        if self.version == "gauss":
+            self.P.requies_grad = False
+        if self.version == 'gauss':
             self.SIG.requires_grad = False
-            self.sig_init = dilated_kernel_size[0] / 2
+            self.sig_init = dilated_kernel_size[0]/2
             torch.nn.init.constant_(self.SIG, self.sig_init)
-
+            
     def decrease_sig(self, epoch, epochs):
-        if self.version == "gauss":
-            final_epoch = epochs // 4
+        if self.version == 'gauss':
+            final_epoch = (1*epochs)//4
             final_sig = 0.23
-            if epoch < epochs and (self.SIG > final_sig).all():
-                alpha = (final_sig / self.sig_init) ** (1 / final_epoch)
+            sig = self.SIG[0, 0, 0, 0, 0, 0].detach().cpu().item()
+            alpha = (final_sig/self.sig_init)**(1/final_epoch)
+            if epoch < final_epoch and sig > final_sig:
                 self.SIG *= alpha
 
     def forward(self, x):
@@ -307,7 +308,7 @@ class BasicBlock(torch.nn.Module):
 
 
 class ResNet18(torch.nn.Module):
-    def __init__(self, block, layers, se=False, spiking_neuron=None, *args, **kwargs):
+    def __init__(self, block, layers, se=False, spiking_neuron=None, delayed=False, *args, **kwargs):
         super(ResNet18, self).__init__()
         in_channels = 1  # kwargs['in_channels']
         self.low_rate = 1  # kwargs['low_rate']
@@ -336,13 +337,14 @@ class ResNet18(torch.nn.Module):
             kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)
         )
         self.se = se
+        self.delayed = delayed
         self.layers = []
 
         self.layer1 = self._make_layer(
             block,
             self.base_channel // (1 if self.low_rate else self.alpha),
             layers[0],
-            delayed=True,
+            delayed=delayed,
             spiking_neuron=spiking_neuron,
             *args,
             **kwargs,
@@ -351,7 +353,7 @@ class ResNet18(torch.nn.Module):
             block,
             2 * self.base_channel // (1 if self.low_rate else self.alpha),
             layers[1],
-            delayed=True,
+            delayed=delayed,
             stride=2,
             spiking_neuron=spiking_neuron,
             *args,
@@ -361,7 +363,7 @@ class ResNet18(torch.nn.Module):
             block,
             4 * self.base_channel // (1 if self.low_rate else self.alpha),
             layers[2],
-            delayed=True,
+            delayed=delayed,
             stride=2,
             spiking_neuron=spiking_neuron,
             *args,
@@ -371,7 +373,7 @@ class ResNet18(torch.nn.Module):
             block,
             8 * self.base_channel // (1 if self.low_rate else self.alpha),
             layers[3],
-            delayed=True,
+            delayed=delayed,
             stride=2,
             spiking_neuron=spiking_neuron,
             *args,
@@ -556,11 +558,12 @@ class LowRateBranch(ResNet18):
         se=False,
         spiking_neuron=None,
         n_class=5,
+        delayed=False,
         *args,
         **kwargs,
     ):
         super().__init__(
-            block, layers, se, spiking_neuron=spiking_neuron, *args, **kwargs
+            block, layers, se, spiking_neuron=spiking_neuron, delayed=delayed, *args, **kwargs
         )
         self.base_channel = 64  # kargs['base_channel']
         self.alpha = 1  # kargs['alpha']
