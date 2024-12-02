@@ -1,24 +1,15 @@
-import argparse
-import datetime
-import json
-import os
-import random
-
+from SNN_models import *
+from utils import *
 import numpy as np
 import torch
-from spikingjelly.activation_based import functional, neuron, surrogate
-from torch.utils.data import DataLoader, Dataset
-
-from SNN_models import SNN1, SNN2, LowRateBranch
-from utils import (
-    DVSLip_Dataset,
-    center_crop,
-    center_random_crop,
-    i3s_Dataset,
-    model_memory_usage,
-    test,
-    train,
-)
+import os
+from spikingjelly.activation_based import functional, surrogate, neuron
+import tonic
+from spikingjelly.activation_based import layer
+import random
+import argparse
+from torch.utils.data import DataLoader
+import time
 
 # Setting some seeds for reproductibility
 torch.manual_seed(42)
@@ -27,84 +18,63 @@ random.seed(42)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--lr", type=float, required=False, default=1e-3)
-parser.add_argument("--batch_size", type=int, required=False, default=32)
-parser.add_argument("-T", type=int, default=30)
-parser.add_argument("--max_epoch", type=int, required=False, default=100)
-parser.add_argument("--resume_training", action="store_true")
+parser.add_argument('--lr', type=float, required=False, default=1e-3)
+parser.add_argument('--batch_size', type=int, required=False, default=32)
+parser.add_argument('-T', type=int, default=30)
+parser.add_argument('--max_epoch', type=int, required=False, default=100)
+parser.add_argument('--resume_training',action='store_true')
 parser.add_argument("-d", dest="is_delayed", action="store_true", default=False, help="delayed network")
+parser.add_argument("--axonal", dest="has_axonal_delay", action="store_true", default=False, help="axonal-delayed network")
+parser.add_argument("--dendritic", dest="has_dendritic_delay", action="store_true", default=False, help="dendritic-delayed network")
+parser.add_argument("--analysis", action="store_true", default=False, help="analysis existing model")
+parser.add_argument("--round", action="store_true", default=False, help="round positions")
+parser.add_argument('--checkpoint_name', type=str, help="checkpoint model name")
+parser.add_argument("--change", action="store_true", default=False, help="change state dict")
 
 # dataset
-parser.add_argument("--dataset", type=str, required=False, default="dvs_lip")
-parser.add_argument(
-    "--dataset_path", type=str, required=False, default="/home/hugo/Work/TER/DVS-Lip"
-)
-parser.add_argument("--n_class", type=int, default=100)
+parser.add_argument('--dataset', type=str, required=False, default="dvs_lip")
+parser.add_argument('--dataset_path', type=str, required=False, default="/home/hugo/Work/TER/DVS-Lip")
+parser.add_argument('--n_class', type=int, default=100)
 
 # model
-parser.add_argument("--model_name", type=str, default="spiking_mstp_low")
+parser.add_argument('--model_name', type=str, default="spiking_mstp_low")
 
 args = parser.parse_args()
 
+LR = 1e-3 if not args.lr else args.lr
+BATCH_SIZE = 32 if not args.batch_size else args.batch_size
+MODEL_CHECKPOINT_PATH = "checkpoint.pt"
+BEST_MODEL_CHECKPOINT_PATH = "best.pt"
+NUM_CLASSES = 100 if not args.n_class else args.n_class
+EPOCHS  = 100 if not args.max_epoch else args.max_epoch
+RESUME_TRAINING = args.resume_training # If true, will load the model saved in MODEL_CHECKPOINT_PATH 
+DATASET_PATH="/home/hugo/Work/TER/DVS-Lip" if not args.dataset_path else args.dataset_path
+T = args.T
+#DATASET_PATH="/home/hugo/Work/TER/i3s_dataset3"
 
-# FIXME: refactor paths
-TIME = datetime.datetime.now().isoformat()
-# TIME = '2024-03-19T01:49:45.647774'
-BASE_PATH = os.path.expanduser(f"~/dvs-runs/{TIME}")
-os.makedirs(BASE_PATH, exist_ok=True)
-
-MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, "full_3_acc_last_model.pth")
-BEST_MODEL_CHECKPOINT_PATH = os.path.join(BASE_PATH, "full_3_acc_best_model.pth")
-RESULTS_PATH = os.path.join(BASE_PATH, "full_3_acc.json")
-
-RESUME_TRAINING = False  # If true, will load the model saved in MODEL_CHECKPOINT_PATH
+MODEL_BASE_PATH = os.path.expanduser('~/paper_runs')
 
 # We can either use the DVS-Lip or I3S dataset
-X_train: Dataset
-X_test: Dataset
-if args.dataset == "dvs_lip":
-    X_train = DVSLip_Dataset(
-        dataset_path=args.dataset_path,
-        transform=center_random_crop,
-        train=True,
-        T=args.T,
-    )
-    X_test = DVSLip_Dataset(
-        dataset_path=args.dataset_path,
-        transform=center_crop,
-        train=False,
-        T=args.T,
-    )
-elif args.dataset == "i3s":
-    X_train = i3s_Dataset(
-        dataset_path=args.dataset_path,
-        transform=center_crop,
-        train=True,
-        T=args.T,
-    )
-    X_test = i3s_Dataset(
-        dataset_path=args.dataset_path,
-        transform=center_crop,
-        train=False,
-        T=args.T,
-    )
+if args.dataset=="dvs_lip":
+	X_train = DVSLip_Dataset(dataset_path=DATASET_PATH, transform=center_random_crop, train=True, T=T)
+	X_test = DVSLip_Dataset(dataset_path=DATASET_PATH, transform=center_crop, train=False, T=T)
+elif args.dataset=="i3s":
+	X_train = i3s_Dataset(dataset_path=DATASET_PATH, transform=center_random_crop, train=True, T=T)
+	X_test = i3s_Dataset(dataset_path=DATASET_PATH, transform=center_crop, train=False, T=T)
 else:
-    print("--dataset should be either dvs_lip or i3s")
-    exit()
+	print("--dataset should be either dvs_lip or i3s")
+	exit()
 
-train_loader = DataLoader(
-    X_train, batch_size=args.batch_size, shuffle=True, num_workers=4
-)
-test_loader = DataLoader(
-    X_test, batch_size=args.batch_size, shuffle=False, num_workers=4
-)
+train_loader = DataLoader(X_train, batch_size=BATCH_SIZE, shuffle=True)
+test_loader = DataLoader(X_test, batch_size=BATCH_SIZE, shuffle=False)
+
 
 
 if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    print("Found GPU")
+	DEVICE = torch.device("cuda")
+	print("Found GPU")
 else:
-    DEVICE = torch.device("cpu")
+	DEVICE = torch.device("cpu")
 
 print(torch.cuda.get_device_name(DEVICE))
 print(torch.cuda.get_device_properties(0).total_memory)
@@ -115,151 +85,147 @@ print(torch.cuda.mem_get_info(0))
 lif = neuron.LIFNode
 plif = neuron.ParametricLIFNode
 
-model: torch.nn.Module
 # Define the model to use
-if args.model_name == "spiking_mstp_low":
-    model = LowRateBranch(
-        n_class=args.n_class,
-        spiking_neuron=plif,
-        delayed=args.is_delayed,
-        detach_reset=True,
-        surrogate_function=surrogate.Erf(),
-        step_mode="m",
-    ).to(DEVICE)
-elif args.model_name == "snn1":
-    model = SNN1(
-        n_class=args.n_class,
-        spiking_neuron=plif,
-        detach_reset=True,
-        surrogate_function=surrogate.Erf(),
-        step_mode="m",
-    ).to(DEVICE)
-elif args.model_name == "snn2":
-    model = SNN2(
-        n_class=args.n_class,
-        spiking_neuron=plif,
-        detach_reset=True,
-        surrogate_function=surrogate.Erf(),
-        step_mode="m",
-    ).to(DEVICE)
+if args.model_name=="spiking_mstp_low":
+	model = LowRateBranch(n_class=NUM_CLASSES, spiking_neuron=plif, delayed=args.is_delayed, axonal_delay=args.has_axonal_delay, dendritic_delay=args.has_dendritic_delay, detach_reset=True, surrogate_function=surrogate.Erf(), step_mode='m').to(DEVICE)
+elif args.model_name=="snn1":
+	model = SNN1(n_class=NUM_CLASSES, spiking_neuron=plif,  detach_reset=True, surrogate_function=surrogate.Erf(), step_mode='m').to(DEVICE)
+elif args.model_name=="snn2":
+	model = SNN2(n_class=NUM_CLASSES, spiking_neuron=plif,  detach_reset=True, surrogate_function=surrogate.Erf(), step_mode='m').to(DEVICE)
 else:
-    print("--model_name should be either spiking_mstp_low, snn1, or snn2")
-    exit()
+	print("--model_name should be either spiking_mstp_low, snn1, or snn2")
+	exit()
 
-functional.set_step_mode(model, "m")
+functional.set_step_mode(model, 'm')
 
-# DCLS position_params have 10x learning rate
 position_params = []
-other_params = []
+others_params = []
 for name, param in model.named_parameters():
-    if name.endswith(".P") or name.endswith(".SIG") and param.requires_grad:
-        position_params.append(param)
-    else:
-        other_params.append(param)
-
+	if name.endswith(".P") or name.endswith(".SIG") and param.requires_grad:
+		position_params.append(param)
+	else:
+		others_params.append(param)
 param_groups = [
-    {"params": position_params, "lr": args.lr * 100, "weight_decay": 0.0},
-    {"params": other_params, "lr": args.lr, "weight_decay": 1e-6},
+	{"params": others_params, "lr": LR, "weight_decay": 10e-7},
+	{"params": position_params, "lr": LR * 100, "weight_decay": 0.0},
 ]
-
-optimizer = torch.optim.Adam(param_groups, lr=args.lr)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.max_epoch)
+optimizer = torch.optim.Adam(param_groups)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, EPOCHS)
 
 # Set scheduler to None if you don't want to use it
-# scheduler = None
+#scheduler = None
 start_epoch = 0
-
-# Print the model
-print(model)
-
-# Print the memory taken by the model
-model_memory_need = model_memory_usage(model)
-print(
-    "Model memory usage: ",
-    model_memory_need,
-    "bytes",
-    "->",
-    model_memory_need * 0.000001,
-    "MB",
-)
-
-train_losses = []
-test_losses = []
-train_accuracies = []
-test_accuracies = []
-best_epoch = {"accuracy": 0, "val_loss": 9999, "train_loss": 9999, "epoch": 0}
-
-torch.autograd.set_detect_anomaly(True)
 
 # Loading MODEL_CHECKPOINT_PATH if resume training is true
 if RESUME_TRAINING:
-    checkpoint = torch.load(MODEL_CHECKPOINT_PATH)
-    model.load_state_dict(checkpoint["model"])
-    optimizer.load_state_dict(checkpoint["optimizer"])
-    start_epoch = checkpoint["epoch"]
-    if scheduler is not None:
-        scheduler.load_state_dict(checkpoint["scheduler"])
-    with open(RESULTS_PATH, "r") as f:
-        results = json.load(f)
-    train_losses = results["train_losses"]
-    test_losses = results["test_losses"]
-    train_accuracies = results["train_accuracies"]
-    test_accuracies = results["test_accuracies"]
-    best_epoch = results["best_epoch"]
-    print("Resuming training from epoch", start_epoch)
+	checkpoint= torch.load(MODEL_CHECKPOINT_PATH)
+	model.load_state_dict(checkpoint['model'])
+	optimizer.load_state_dict(checkpoint['optimizer'])
+	start_epoch = checkpoint['epoch']
+	print("Resuming training from epoch", start_epoch)
+	if scheduler is not None:
+		scheduler.load_state_dict(checkpoint['scheduler'])
 
-# Training/testing loop
-for epoch in range(start_epoch, args.max_epoch):
-    train_loss, train_accuracy = train(
-        model,
-        DEVICE,
-        train_loader,
-        optimizer,
-        num_labels=args.n_class,
-        scheduler=scheduler,
-    )
-    # DCLS sigmas follow a decreasing linear scheduler
-    model.decrease_sig(epoch, args.max_epoch)
-    test_loss, test_accuracy = test(model, DEVICE, test_loader, num_labels=args.n_class)
+# Print the memory taken by the model
+model_memory_need = model_memory_usage(model)
+print("Model memory usage: ", model_memory_need, "bytes", "->", model_memory_need*0.000001, "MB")
 
-    train_losses.append(train_loss)
-    test_losses.append(test_loss)
-    train_accuracies.append(train_accuracy)
-    test_accuracies.append(test_accuracy)
-    checkpoint = {
-        "epoch": epoch,
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": None if scheduler is None else scheduler.state_dict(),
-    }
-    torch.save(checkpoint, MODEL_CHECKPOINT_PATH)
+training_losses = []
+mean_losses = []
+test_losses = []
+accuracies = []
+best_epoch = {"accuracy":0, "val_loss":9999, "train_loss":9999, "epoch":0}
 
-    # We save the best model in BEST_MODEL_CHECKPOINT_PATH
-    if test_accuracy > best_epoch["accuracy"] or (
-        test_accuracy == best_epoch["accuracy"] and test_loss < best_epoch["val_loss"]
-    ):
-        best_epoch["accuracy"] = test_accuracy
-        best_epoch["val_loss"] = test_loss
-        best_epoch["train_loss"] = train_loss
-        best_epoch["epoch"] = epoch
-        torch.save(checkpoint, BEST_MODEL_CHECKPOINT_PATH)
+torch.autograd.set_detect_anomaly(True)
 
-    print("Train loss at epoch", epoch, ":", train_loss)
-    print("Train accuracy at epoch", epoch, ":", train_accuracy, "%")
-    print("Test loss at epoch", epoch, ":", test_loss)
-    print("Test accuracy at epoch", epoch, ":", test_accuracy, "%")
-    print("BEST EPOCH SO FAR:", best_epoch)
+if not args.analysis:
+	# Training/testing loop
+	for epoch in trange(start_epoch, EPOCHS):
+		epoch_start = time.time()
+		train_loss, train_accuracy = train(model, DEVICE, train_loader, optimizer, num_labels=NUM_CLASSES, scheduler=scheduler)
+		model.decrease_sig(epoch, EPOCHS)
+		test_loss, accuracy = test(model, DEVICE, test_loader, num_labels=NUM_CLASSES)
 
-    results = {
-        "train_losses": train_losses,
-        "test_losses": test_losses,
-        "train_accuracies": train_accuracies,
-        "test_accuracies": test_accuracies,
-        "best_epoch": best_epoch,
-    }
+		training_losses.append(train_loss)
+		mean_losses.append(train_loss)
+		test_losses.append(test_loss)
+		accuracies.append(accuracy)
+		checkpoint={
+			'epoch':epoch,
+			'model':model.state_dict(),
+			'optimizer':optimizer.state_dict(),
+			'scheduler': None if scheduler is None else scheduler.state_dict()
+		}
+		torch.save(checkpoint, MODEL_CHECKPOINT_PATH)
 
-    with open(RESULTS_PATH, "w") as file:
-        json.dump(results, file)
+		# We save the best model in BEST_MODEL_CHECKPOINT_PATH
+		if accuracy>best_epoch["accuracy"] or (accuracy==best_epoch["accuracy"] and test_loss<best_epoch["val_loss"]):
+			best_epoch["accuracy"]=accuracy
+			best_epoch["val_loss"]=test_loss
+			best_epoch["train_loss"]=train_loss
+			best_epoch["epoch"]=epoch
+			checkpoint = {
+				'epoch':epoch,
+				'model':model.state_dict(),
+				'optimizer':optimizer.state_dict(),
+				'scheduler': None if scheduler is None else scheduler.state_dict()
+			}
+			torch.save(checkpoint, BEST_MODEL_CHECKPOINT_PATH)
 
-print("Training done !")
-print("BEST EPOCH:", best_epoch)
+		epoch_end = time.time()
+		epoch_duration = epoch_end - epoch_start
+		print("Epoch (training) took {:.3f}s".format(epoch_duration))
+
+		print("Train loss at epoch", epoch, ":", train_loss)
+		print("Train accuracy at epoch", epoch, ":", train_accuracy, "%")
+		print("Test loss at epoch", epoch, ":", test_loss)
+		print("Test accuracy at epoch", epoch, ":", accuracy, "%")
+		print("BEST EPOCH SO FAR:",best_epoch)
+
+		with open('res_test.txt', 'a') as f:
+			f.write(
+				"epoch %i: train: %.2f, val: %.2f, train_loss: %.5f, test_loss: %.3f, lr: %.5f, epoch duration: %.3f\n"
+				% (
+					epoch+1,
+					train_accuracy, 
+					accuracy, 
+					train_loss, 
+					test_loss, 
+					optimizer.param_groups[0]["lr"],
+					epoch_duration
+				)
+			)
+
+	print("Training done !")
+	print("BEST EPOCH:",best_epoch)
+	print("Best model saved in", BEST_MODEL_CHECKPOINT_PATH)
+	with open('res_test.txt', 'a') as f:
+		f.write("best epoch, accu (val): %i %.2f"%(best_epoch["epoch"] +1, best_epoch["accuracy"]))
+		f.write('\n')
+
+else:
+	model_path = os.path.join(MODEL_BASE_PATH, args.checkpoint_name + '.pt')
+	model_state_dict = torch.load(model_path, map_location=DEVICE)
+	if 'model' in model_state_dict.keys():
+		model_state_dict = model_state_dict['model']
+	if args.change:
+		keys = list(model_state_dict.keys())
+		for key in keys:
+			new_key = key
+			if 'downsample.0' in key:
+				new_key = key.replace('downsample.0.', 'downsample.0.conv.')
+			elif 'downsample_block' in key:
+				new_key = key.replace('downsample_block.', 'downsample_block.conv.')
+			elif 'conv' in key and 'layer' in key:
+				phrases = key.rsplit('.', 1)
+				new_key = phrases[0] + '.conv.' + phrases[1]
+			model_state_dict[new_key] = model_state_dict.pop(key)
+	
+	model.load_state_dict(model_state_dict, strict=True)
+	if args.round:
+		with torch.no_grad():
+			model.round_pos()
+	print(f'Total number of parameters: {sum(p.numel() for p in model.parameters())}')
+	test_loss, accuracy = test(model, DEVICE, test_loader, num_labels=NUM_CLASSES)
+	print(f'Test Accuracy: {accuracy}')
+	print('###############################')
